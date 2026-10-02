@@ -12,7 +12,8 @@ on-demand across every US region. gpulander exists to wait that out without you 
 ```bash
 pip install gpulander
 
-gpulander --list                              # the GPU SKU catalog
+gpulander --list                              # the GPU SKU catalog (what you can hunt)
+gpulander accounts                            # your AWS profiles -> which account each maps to
 gpulander check --gpu rtxpro6000              # read-only: placement score, offered AZs, live spot $/hr
 gpulander grab  --gpu rtxpro6000 --name job   # poll + grab (spot); writes launched.json; exit 0 on win
 ```
@@ -50,6 +51,38 @@ Three ways to say what you want (choose one); the resolved list is tried cheapes
 
 ## Commands
 
+### `gpulander accounts` — which accounts can I hunt in?
+gpulander never embeds an account — it uses the **standard AWS CLI credential chain**, where each
+**profile** in `~/.aws` (SSO or access keys) maps to one account/role. `accounts` enumerates your
+configured profiles and, for each, prints the 12-digit account id and whether its creds currently work:
+
+```text
+$ gpulander accounts
+Configured AWS profiles (from ~/.aws/config & ~/.aws/credentials):
+  PROFILE                    ACCOUNT        STATUS
+  dev                        1111....       ok   arn:aws:sts::1111...:assumed-role/...
+  prod                       2222....       ok   arn:aws:sts::2222...:assumed-role/...
+  sandbox                    -              NEEDS AUTH (Token has expired)
+
+Poll one or several:  gpulander grab --gpu rtxpro6000 --profile p1,p2,p3
+Refresh SSO creds:    aws sso login --profile <name>
+```
+
+Add a profile with `aws configure --profile NAME` (keys) or `aws configure sso` (SSO).
+
+### Multiple accounts — poll several at once
+Point `--profile` at one account, or a **comma list** to sweep several every round. The **first account
+to land a box wins**, and `launched.json` records which one:
+
+```bash
+gpulander check --gpu rtxpro6000 --profile dev,prod            # compare availability across accounts
+gpulander grab  --gpu rtxpro6000 --profile dev,prod,sandbox    # hunt across 3 accounts simultaneously
+```
+
+Per account, the per-region keypair/security-group/AMI are created and cached independently (keyed by
+profile), so one run can safely span accounts. With no `--profile`, gpulander uses `$AWS_PROFILE` /
+`$GPULANDER_PROFILE` / the default chain (a single account).
+
 ### `gpulander check` — read-only availability
 For each resolved instance type: the **spot placement score** per region/AZ (1 = low … 10 = high chance
 of actually getting spot), which **AZs offer** the type, and the **latest spot $/hr** (cheapest first).
@@ -75,10 +108,10 @@ gpulander grab --instance g7e.2xlarge --dry-run                         # see th
 | `--spot` / `--on-demand` / `--either` | `--spot` | market (`--either` tries spot then on-demand per AZ) |
 | `--max-price X` | 1.25× the catalog on-demand hint | spot ceiling $/hr |
 | `--regions r1,r2` | `us-east-1,us-east-2,us-west-2` | where to hunt |
+| `--profile p1,p2` | `$AWS_PROFILE` / `$GPULANDER_PROFILE` / default chain | AWS profile(s) = account(s); comma list sweeps several |
 | `--name TAG` | `grab` | instance Name tag + runtime dir |
 | `--deadline MINS` | `240` | give up after N minutes → exit 7 |
 | `--cap-hours H` | `4` | box self-terminates after H hours (cost guard) |
-| `--profile P` | `$AWS_PROFILE` / `$GPULANDER_PROFILE` / default chain | AWS profile |
 | `--dry-run` | off | resolve + print the plan; launch nothing |
 
 ## The background-exit pattern (why `grab` exits instead of training)
@@ -121,7 +154,7 @@ gpulander --skill install    # install into ~/.claude/skills, ~/.codex/skills, ~
 | var | default | meaning |
 |---|---|---|
 | `GPULANDER_HOME` | `~/.gpulander` | runtime/state root (`runs/<name>/` holds the SSH key, `launched.json`, `status`) |
-| `GPULANDER_PROFILE` | — | default AWS profile when `--profile` isn't given |
+| `GPULANDER_PROFILE` | — | default AWS profile(s) when `--profile` isn't given (comma list ok) |
 
 Per-run state (an ed25519 keypair, `launched.json`, `status`) lives in `$GPULANDER_HOME/runs/<name>/`.
 The keypair and SG (`gpulander-<name>`) are created per region on demand; SSH ingress is opened only from
