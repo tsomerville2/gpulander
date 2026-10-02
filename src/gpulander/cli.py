@@ -16,6 +16,9 @@ def script_path() -> Path:
 
 
 def main() -> "int | None":
+    if len(sys.argv) > 1 and sys.argv[1] == "watch":
+        from gpulander import watch
+        return watch.main(sys.argv[2:])
     sh = script_path()
     if not sh.exists():
         sys.stderr.write(f"gpulander: bundled script not found at {sh}\n")

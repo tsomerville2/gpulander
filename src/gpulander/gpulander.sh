@@ -158,7 +158,8 @@ EXAMPLES
   gpulander accounts                                         # your profiles -> account ids
   gpulander check --gpu rtxpro6000 --profile dev,prod        # available? price? across 2 accounts
   gpulander grab  --gpu rtxpro6000 --name gemma --spot       # cheap 96GB Blackwell, spot
-  gpulander grab  --gpu h200 --regions us-east-2 --name big  # 8xH200 spot (~$25/hr)
+  gpulander watch run --hours 24                          # READ-ONLY availability observatory (H200 is record-only, never grab)
+  gpulander watch report                                  # summarize the observations
   gpulander grab  --min-vram 48 --either --max-price 3.00    # anything >=48GB, spot-or-ondemand
   gpulander grab  --instance g7e.2xlarge --dry-run           # see the plan, launch nothing
 
@@ -195,7 +196,6 @@ OTHER OPTIONS
 
 EXAMPLES
   gpulander grab --gpu rtxpro6000 --name gemma --spot --deadline 240 --cap-hours 3
-  gpulander grab --gpu h200 --regions us-east-2 --name ornith --spot          # ~$25/hr 8xH200
   gpulander grab --gpu rtxpro6000 --profile dev,prod,admin --name gemma       # across 3 accounts
   gpulander grab --min-vram 48 --either --max-price 3.00 --name midsize
   gpulander grab --instance g7e.2xlarge --dry-run
@@ -281,7 +281,7 @@ provision, and train. Full manual: `gpulander --help`; per-command: `grab|check|
 
 ## Good to know
 - Scarce new GPUs (g7e, H200) can be `InsufficientInstanceCapacity` on BOTH spot and on-demand — `check` first.
-- No single-GPU H200 on AWS; `--gpu h200` = 8xH200 p5e.48xlarge (big/pricey). 96GB single-GPU = g7e.
+- No single-GPU H200 on AWS. OWNER POLICY: H200 is record-only (never grab it) — use `gpulander watch` to log availability. 96GB single-GPU = g7e.
 - Exit codes: 0 grabbed (launched.json) · 7 deadline/no-capacity · 2 error.
 - State lives under $GPULANDER_HOME (default ~/.gpulander); no creds are stored by gpulander.
 
