@@ -57,12 +57,15 @@ p5e.48xlarge   H200                    141  192  8   ~110   8xH200 (1128GB total
 p5en.48xlarge  H200                    141  192  8   ~115   8xH200, newer networking
 EOF
 
-catalog_table () {
-  printf "%-15s %-24s %6s %6s %6s %8s  %s\n" INSTANCE GPU VRAM vCPU GPUs "\$OD/hr" NOTE
-  echo "$CATALOG" | while read -r it gpu vram vcpu gpus od note; do
+catalog_table () {   # built into one string + emitted in a single write (clean under `| head`)
+  local out it gpu vram vcpu gpus od note
+  out=$(printf "%-15s %-24s %6s %6s %6s %8s  %s" INSTANCE GPU VRAM vCPU GPUs "\$OD/hr" NOTE)
+  while read -r it gpu vram vcpu gpus od note; do
     [ -z "$it" ] && continue
-    printf "%-15s %-24s %5sG %6s %6s %8s  %s\n" "$it" "$gpu" "$vram" "$vcpu" "$gpus" "$od" "$(echo "$note" | cut -c1-48)"
-  done
+    out="$out
+$(printf "%-15s %-24s %5sG %6s %6s %8s  %s" "$it" "$gpu" "$vram" "$vcpu" "$gpus" "$od" "$(printf '%s' "$note" | cut -c1-48)")"
+  done <<< "$CATALOG"
+  printf '%s\n' "$out"
 }
 
 SKILL_DIRNAME="gpulander"
