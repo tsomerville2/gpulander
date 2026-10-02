@@ -1,0 +1,19 @@
+# build / dist
+build/
+dist/
+*.egg-info/
+.eggs/
+__pycache__/
+*.pyc
+
+# venvs
+.venv/
+venv/
+
+# gpulander runtime (ssh keys, launched.json, status) — never commit
+.gpulander/
+runs/
+*.pem
+ssh-key
+ssh-key.pub
+launched.json
