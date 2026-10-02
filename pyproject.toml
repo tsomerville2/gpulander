@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gpulander"
+version = "0.1.0"
+description = "Opportunistic AWS GPU grabber — poll for spot/on-demand capacity across regions and land the first match."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "tsomerville2" }]
+keywords = ["aws", "gpu", "spot", "ec2", "training", "h200", "h100", "capacity", "cli", "agent"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: System :: Distributed Computing",
+  "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/tsomerville2/gpulander"
+Repository = "https://github.com/tsomerville2/gpulander"
+
+[project.scripts]
+gpulander = "gpulander.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gpulander"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/gpulander/gpulander.sh" = "gpulander/gpulander.sh"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/gpulander", "README.md", "LICENSE", "SKILL.md"]
