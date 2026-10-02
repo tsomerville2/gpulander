@@ -170,3 +170,7 @@ the caller's current public IP (`/32`).
 ## License
 
 MIT.
+
+## watch (read-only observatory)
+
+`gpulander watch run --hours 24 --interval 600 --profile a,b,c` records spot placement scores, current spot prices and 24h Capacity Block offers (p5/p5e/p5en/p6-b200/b300/trn/p4) for 18 GPU types across 8 regions into SQLite (`~/.gpulander/watch/availability.sqlite`). It never launches, reserves or buys. `gpulander watch report` prints a summary. On-demand capacity has no read-only API (`run-instances --dry-run` always says it would succeed), so it is deliberately not probed.

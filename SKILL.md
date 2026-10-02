@@ -33,7 +33,8 @@ provision, and train. Full manual: `gpulander --help`; per-command: `grab|check|
 
 ## Good to know
 - Scarce new GPUs (g7e, H200) can be `InsufficientInstanceCapacity` on BOTH spot and on-demand — `check` first.
-- No single-GPU H200 on AWS; `--gpu h200` = 8xH200 p5e.48xlarge (big/pricey). 96GB single-GPU = g7e.
+- No single-GPU H200 on AWS. OWNER POLICY: H200 is record-only, never grab it. 96GB single-GPU = g7e.
+- `gpulander watch run --hours 24 [--profile a,b]` is a READ-ONLY observatory (spot placement score, spot price, Capacity Block offers for 18 GPU/accel types x 8 regions -> `~/.gpulander/watch/availability.sqlite`); `gpulander watch report` summarizes. On-demand capacity has no read-only API, so it is not probed.
 - Exit codes: 0 grabbed (launched.json) · 7 deadline/no-capacity · 2 error.
 - State lives under $GPULANDER_HOME (default ~/.gpulander); no creds are stored by gpulander.
 
