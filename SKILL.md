@@ -15,10 +15,11 @@ gpulander grab  --gpu rtxpro6000 --name job   # 2. poll+grab (spot); writes laun
 Run step 2 under an agent's `run_in_background` — the EXIT on grab re-invokes the agent to SSH in,
 provision, and train. Full manual: `gpulander --help`; per-command: `grab|check|accounts --help`.
 
-## Pick a GPU  (full menu: `gpulander --list`)
-- `--gpu rtxpro6000` 96GB (~$1.92 spot) · `--gpu l40s` 48GB · `--gpu a10g|l4` 24GB · `--gpu h200` = 8xH200 141GB (~$25 spot).
+## Pick a GPU  (menu: `gpulander --list`; live spot $: `gpulander --list --live`)
+- `--gpu rtxpro6000` 96GB (~$2 spot) · `--gpu l40s` 48GB · `--gpu a10g|l4` 24GB · `--gpu h200` = 8xH200 141GB (~$25 spot).
 - or `--min-vram 48` (cheapest single-GPU ≥48GB) · or `--instance g7e.2xlarge`.
 - Names: rtxpro6000 | l40s | l4 | a10g | h100 | h200 | a100-80 | a100-40 | t4 | v100.
+- `--list` shows ~$spot estimates; `--list --live` fetches current cheapest spot per SKU across regions.
 
 ## Pick the account(s)  (list them: `gpulander accounts`)
 - Each AWS profile in ~/.aws = one account. Target one: `--profile NAME`. Sweep several at once:
