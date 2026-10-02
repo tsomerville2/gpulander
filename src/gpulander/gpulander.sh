@@ -38,34 +38,56 @@ set -uo pipefail
 
 GPULANDER_HOME="${GPULANDER_HOME:-$HOME/.gpulander}"
 
-# ---------------- SKU catalog ----------------  instance | gpu | vram(GB,per-GPU) | vcpu | #gpus | ~ondemand$/hr/instance | note
+# --------- SKU catalog ---------  instance | gpu | vram(GB,per-GPU) | vcpu | #gpus | ~ondemand$/hr | ~spot$/hr(rough US) | note
 read -r -d '' CATALOG <<'EOF'
-g7e.2xlarge    RTX_PRO_6000_Blackwell  96   8    1   3.36   96GB Blackwell; cheapest single 96GB
-g7e.4xlarge    RTX_PRO_6000_Blackwell  96   16   1   4.00   more host vCPU/RAM, same 1 GPU
-g7e.8xlarge    RTX_PRO_6000_Blackwell  96   32   1   5.27   same 1 GPU
-g7e.16xlarge   RTX_PRO_6000_Blackwell  96   64   1   10.5   same 1 GPU
-g6e.2xlarge    L40S                    48   8    1   2.24   48GB, great mid-size
-g6e.4xlarge    L40S                    48   16   1   3.00   48GB
-g6.2xlarge     L4                      24   8    1   0.98   24GB, cheap
-g5.2xlarge     A10G                    24   8    1   1.21   24GB, cheap
-g4dn.xlarge    T4                      16   4    1   0.53   16GB, tiny/cheap
-p3.2xlarge     V100                    16   8    1   3.06   16GB, legacy
-p4d.24xlarge   A100                    40   96   8   32.8   8xA100-40 (320GB total)
-p4de.24xlarge  A100                    80   96   8   40.9   8xA100-80 (640GB total)
-p5.48xlarge    H100                    80   192  8   98.3   8xH100 (640GB total)
-p5e.48xlarge   H200                    141  192  8   ~110   8xH200 (1128GB total) — only H200 SKU on AWS
-p5en.48xlarge  H200                    141  192  8   ~115   8xH200, newer networking
+g7e.2xlarge    RTX_PRO_6000_Blackwell  96   8    1   3.36   1.92   96GB Blackwell; cheapest single 96GB
+g7e.4xlarge    RTX_PRO_6000_Blackwell  96   16   1   4.00   2.30   more host vCPU/RAM, same 1 GPU
+g7e.8xlarge    RTX_PRO_6000_Blackwell  96   32   1   5.27   3.00   same 1 GPU
+g7e.16xlarge   RTX_PRO_6000_Blackwell  96   64   1   10.5   6.00   same 1 GPU
+g6e.2xlarge    L40S                    48   8    1   2.24   0.90   48GB, great mid-size
+g6e.4xlarge    L40S                    48   16   1   3.00   1.20   48GB
+g6.2xlarge     L4                      24   8    1   0.98   0.40   24GB, cheap
+g5.2xlarge     A10G                    24   8    1   1.21   0.45   24GB, cheap
+g4dn.xlarge    T4                      16   4    1   0.53   0.16   16GB, tiny/cheap
+p3.2xlarge     V100                    16   8    1   3.06   0.92   16GB, legacy
+p4d.24xlarge   A100                    40   96   8   32.8   12.0   8xA100-40 (320GB total)
+p4de.24xlarge  A100                    80   96   8   40.9   15.0   8xA100-80 (640GB total)
+p5.48xlarge    H100                    80   192  8   98.3   30.0   8xH100 (640GB total)
+p5e.48xlarge   H200                    141  192  8   110    25.5   8xH200 (1128GB total) — only H200 SKU on AWS
+p5en.48xlarge  H200                    141  192  8   115    27.0   8xH200, newer networking
 EOF
 
-catalog_table () {   # built into one string + emitted in a single write (clean under `| head`)
-  local out it gpu vram vcpu gpus od note
-  out=$(printf "%-15s %-24s %6s %6s %6s %8s  %s" INSTANCE GPU VRAM vCPU GPUs "\$OD/hr" NOTE)
-  while read -r it gpu vram vcpu gpus od note; do
+catalog_table () {   # static menu; built into one string + emitted in a single write (clean under `| head`)
+  local out it gpu vram vcpu gpus od spot note
+  out=$(printf "%-15s %-24s %6s %5s %5s %8s %9s  %s" INSTANCE GPU VRAM GPUs vCPU "\$OD/hr" "~\$spot/hr" NOTE)
+  while read -r it gpu vram vcpu gpus od spot note; do
     [ -z "$it" ] && continue
     out="$out
-$(printf "%-15s %-24s %5sG %6s %6s %8s  %s" "$it" "$gpu" "$vram" "$vcpu" "$gpus" "$od" "$(printf '%s' "$note" | cut -c1-48)")"
+$(printf "%-15s %-24s %5sG %5s %5s %8s %9s  %s" "$it" "$gpu" "$vram" "$gpus" "$vcpu" "$od" "$spot" "$(printf '%s' "$note" | cut -c1-42)")"
   done <<< "$CATALOG"
   printf '%s\n' "$out"
+  echo
+  echo "~\$spot = rough typical US spot (varies by region/AZ/minute). For LIVE prices:"
+  echo "    gpulander --list --live            # current cheapest spot per SKU across your regions"
+  echo "    gpulander check --gpu NAME         # placement score + offered AZs + live spot, per account"
+}
+
+list_live () {   # augment the catalog with the CURRENT cheapest spot found across --regions
+  local regions="$1"
+  printf "%-15s %-24s %6s %5s %10s  %s\n" INSTANCE GPU VRAM GPUs "spot\$ now" "cheapest AZ now  (regions: ${regions// /, })"
+  while read -r it gpu vram vcpu gpus od spot note; do
+    [ -z "$it" ] && continue
+    local bestp="" bestaz="" r line p az
+    for r in $regions; do
+      line=$(aws ec2 describe-spot-price-history "${PROFILE_ARGS[@]}" --region "$r" --instance-types "$it" --product-descriptions "Linux/UNIX" --start-time "$(date -u +%FT%TZ)" --query 'SpotPriceHistory[].[SpotPrice,AvailabilityZone]' --output text 2>/dev/null | sort -n | head -1)
+      [ -z "$line" ] && continue
+      p=$(printf '%s' "$line" | awk '{print $1}'); az=$(printf '%s' "$line" | awk '{print $2}')
+      if [ -z "$bestp" ] || awk -v a="$p" -v b="$bestp" 'BEGIN{exit !(a<b)}'; then bestp="$p"; bestaz="$az"; fi
+    done
+    printf "%-15s %-24s %5sG %5s %10s  %s\n" "$it" "$gpu" "$vram" "$gpus" "${bestp:+\$$bestp}" "${bestaz:-— not offered / no spot}"
+  done <<< "$CATALOG"
+  echo
+  echo "Live spot, cheapest AZ per SKU. '—' = type not offered there or no current spot. Grab: gpulander grab --gpu NAME"
 }
 
 SKILL_DIRNAME="gpulander"
@@ -86,7 +108,7 @@ COMMANDS
   check     READ-ONLY: availability (spot-placement score, offered AZs, live spot $/hr). No launch.
   grab      poll until a matching GPU launches; writes launched.json and exits 0.
   accounts  list your configured AWS profiles + which 12-digit account each maps to (read-only).
-  --list    print the GPU SKU catalog (what you can hunt: instance -> GPU / VRAM / #GPU / $).
+  --list [--live]   GPU SKU catalog (instance -> GPU/VRAM/#GPU/$OD/~$spot). --live = current spot $/hr.
 
 SELECTORS  (choose ONE; resolved list is cheapest / fewest-GPU first)
   --gpu NAME        rtxpro6000 | l40s | l4 | a10g | h100 | h200 | a100-80 | a100-40 | t4 | v100
@@ -105,6 +127,18 @@ OPTIONS
   --cap-hours H     box self-terminates after H hours     (default: 4)  cost guard
   --dry-run         (grab) resolve + print what it WOULD try; launch nothing
 
+SPOT vs ON-DEMAND  (spot is the DEFAULT — far cheaper, but interruptible)
+  --spot        (default) bid for spare capacity at a big discount. See the ~$spot column in --list for
+                a ballpark, live numbers via --list --live or `check`. AWS can reclaim a spot box on ~2
+                min notice; gpulander launches it one-time with interruption-behavior=terminate, so if
+                reclaimed it simply terminates — checkpoint your training. Cheapest way to grab scarce GPUs.
+  --on-demand   full price, NOT reclaimable. Use when the run must not be interrupted.
+  --either      try spot first in each AZ, else on-demand — grabs whichever appears first.
+  --max-price X your spot CEILING $/hr (default: 1.25x the catalog on-demand hint). You pay the live
+                market price, never more than X; if the market is above X the request just won't fill.
+  Before a long grab:  gpulander check --gpu NAME  -> spot PLACEMENT SCORE (1..10 = how likely spot is
+                to actually fill) + offered AZs + live spot $/hr, per account.
+
 MULTIPLE ACCOUNTS
   Each AWS profile in ~/.aws (SSO or keys) = one account/role. Name several with a comma list and
   gpulander sweeps them all each round; the FIRST account to land a box wins (launched.json records it).
@@ -119,7 +153,8 @@ EXIT CODES
   2  bad args / setup error
 
 EXAMPLES
-  gpulander --list                                           # the SKU menu (what you can hunt)
+  gpulander --list                                           # the SKU menu + ~spot estimates
+  gpulander --list --live --regions us-east-2,us-west-2      # current cheapest spot $/hr per GPU
   gpulander accounts                                         # your profiles -> account ids
   gpulander check --gpu rtxpro6000 --profile dev,prod        # available? price? across 2 accounts
   gpulander grab  --gpu rtxpro6000 --name gemma --spot       # cheap 96GB Blackwell, spot
@@ -148,9 +183,14 @@ SELECTOR (choose one)
   --min-vram GB      --min-vram 48            (cheapest single-GPU with >= 48GB)
   --instance T[,T2]  --instance g7e.2xlarge,g7e.4xlarge   (exact, priority order)
 
-OPTIONS  (spot is default)
-  --spot | --on-demand | --either · --max-price X · --regions r1,r2 ·
-  --profile p1,p2,p3 (sweep several accounts) · --name TAG ·
+MARKET  (spot is the default)
+  --spot        cheap, interruptible (box is one-time + self-terminates if reclaimed) — the default.
+  --on-demand   full price, not reclaimable.   --either  spot first, else on-demand, per AZ.
+  --max-price X spot ceiling $/hr (default 1.25x on-demand hint); you pay live market, never above X.
+  Check spot odds + live price first:  gpulander check --gpu NAME   (placement score 1..10 + spot $/hr).
+
+OTHER OPTIONS
+  --regions r1,r2 · --profile p1,p2,p3 (sweep several accounts) · --name TAG ·
   --deadline MINS (->exit 7) · --cap-hours H · --dry-run
 
 EXAMPLES
@@ -223,10 +263,11 @@ gpulander grab  --gpu rtxpro6000 --name job   # 2. poll+grab (spot); writes laun
 Run step 2 under an agent's `run_in_background` — the EXIT on grab re-invokes the agent to SSH in,
 provision, and train. Full manual: `gpulander --help`; per-command: `grab|check|accounts --help`.
 
-## Pick a GPU  (full menu: `gpulander --list`)
-- `--gpu rtxpro6000` 96GB (~$1.92 spot) · `--gpu l40s` 48GB · `--gpu a10g|l4` 24GB · `--gpu h200` = 8xH200 141GB (~$25 spot).
+## Pick a GPU  (menu: `gpulander --list`; live spot $: `gpulander --list --live`)
+- `--gpu rtxpro6000` 96GB (~$2 spot) · `--gpu l40s` 48GB · `--gpu a10g|l4` 24GB · `--gpu h200` = 8xH200 141GB (~$25 spot).
 - or `--min-vram 48` (cheapest single-GPU ≥48GB) · or `--instance g7e.2xlarge`.
 - Names: rtxpro6000 | l40s | l4 | a10g | h100 | h200 | a100-80 | a100-40 | t4 | v100.
+- `--list` shows ~$spot estimates; `--list --live` fetches current cheapest spot per SKU across regions.
 
 ## Pick the account(s)  (list them: `gpulander accounts`)
 - Each AWS profile in ~/.aws = one account. Target one: `--profile NAME`. Sweep several at once:
@@ -345,7 +386,20 @@ MODE=""; INSTANCES=""; GPU=""; MINVRAM=""; MARKET=spot; MAXPRICE=""; REGIONS="us
 NAME="grab"; DEADLINE=240; CAP=4; PROFILE="${GPULANDER_PROFILE:-${AWS_PROFILE:-}}"; DRY=0
 [ $# -eq 0 ] && { help_main; exit 2; }
 case "$1" in
-  --list) catalog_table; exit 0 ;;
+  --list) shift
+    LV=0; LREG="us-east-1 us-east-2 us-west-2"; LPROF="${GPULANDER_PROFILE:-${AWS_PROFILE:-}}"
+    while [ $# -gt 0 ]; do case "$1" in
+      --live) LV=1; shift;;
+      --regions) LREG="${2//,/ }"; shift 2;;
+      --profile) LPROF="$2"; shift 2;;
+      -h|--help) echo "gpulander --list [--live] [--regions r1,r2] [--profile P]"; echo "  (no flags) static menu with ~spot estimates · --live = current cheapest spot per SKU"; exit 0;;
+      *) shift;;
+    esac; done
+    if [ "$LV" = 1 ]; then
+      echo "LIVE spot prices (read-only — nothing launched)  regions=[$LREG]  profile=${LPROF:-<default chain>}"
+      set_profile_args "$LPROF"; list_live "$LREG"
+    else catalog_table; fi
+    exit 0 ;;
   -h|--help) help_main; exit 0 ;;
   --skill) shift; skill_cmd "$@"; exit $? ;;
   accounts) shift; { [ "${1:-}" = -h ] || [ "${1:-}" = --help ]; } && { help_accounts; exit 0; }; list_accounts; exit 0 ;;
