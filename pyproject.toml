@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gpulander"
-version = "0.1.0"
+version = "0.1.1"
 description = "Opportunistic AWS GPU grabber — poll for spot/on-demand capacity across regions and land the first match."
 readme = "README.md"
 requires-python = ">=3.8"
